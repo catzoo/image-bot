@@ -8,7 +8,6 @@ import os
 # import discord
 from discord.ext import commands
 import env_config
-import sqlite3
 
 bot = commands.Bot(command_prefix='?')
 
@@ -19,7 +18,7 @@ if __name__ == '__main__':
         if x != '__pycache__':
             x = x.replace('.py', '', 1)
             bot.load_extension(f'cog.{x}')
-
+    bot.load_extension('jishaku')
 
 @bot.event
 async def on_ready():

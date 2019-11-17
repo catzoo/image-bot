@@ -7,6 +7,7 @@ import discord
 from discord.ext import commands
 import env_config
 import sqlite3
+import aiohttp
 
 __cog_name__ = 'image'
 
@@ -14,6 +15,8 @@ __cog_name__ = 'image'
 class Image(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        # location of the database, not going to make this go off of __cog_name__ since its a database
+        # if we change the cog's name, it would change the database
         self.database_location = f'{env_config.data_folder}/image.db'
 
         if not os.path.exists(self.database_location):
@@ -27,6 +30,12 @@ class Image(commands.Cog):
             conn = sqlite3.connect(self.database_location)
 
         self.connection = conn  # database connection
+
+
+    async def download_image(self, url):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as resp:
+
 
     # todo: add url check
     @commands.guild_only()

@@ -22,6 +22,7 @@ load_dotenv()
 token = os.getenv('TOKEN')
 debug = os.getenv('DEBUG')
 data_folder = os.getenv('DATA')
+main_guild = os.getenv('GUILD')
 
 if token is None:
     raise EnvError('Missing TOKEN value!')
@@ -29,6 +30,13 @@ if debug is None:
     raise EnvError('Missing DEBUG value!')
 if data_folder is None:
     raise EnvError('Missing DATA value!')
+if main_guild is None:
+    raise EnvError('Missing GUILD value!')
+else:
+    try:
+        main_guild = int(main_guild)
+    except ValueError:
+        raise EnvError('GUILD has to be a number')
 
 if debug == 'False' or debug == 'false':
     debug = False

@@ -10,10 +10,12 @@ from discord.ext import tasks, commands
 import env_config
 import asqlite
 from random import randint
+from checks import Checks
 
 __cog_name__ = 'image'
 
 
+# noinspection PyRedundantParentheses
 class Image(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -59,7 +61,7 @@ class Image(commands.Cog):
             self.guild = self.bot.get_guild(env_config.main_guild)
             # self.image_loop.start()  # starting the loop
 
-    @commands.guild_only()
+    @commands.check(Checks.manager_check)
     @commands.command()
     async def add_image(self, ctx, name, url: typing.Optional[str]):
         if ctx.message.attachments:
@@ -85,7 +87,7 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description='URL or attachment is required',
                                                color=discord.Color.red()))
 
-    @commands.guild_only()
+    @commands.check(Checks.manager_check)
     @commands.command()
     async def remove_image(self, ctx, img_id: int):
         c = await self.connection.cursor()
@@ -99,10 +101,11 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f"I can't find that image",
                                                color=discord.Color.red()))
 
-    # todo: add loop to randomly place image in channel
+    # noinspection PyCallingNonCallable
     @tasks.loop(hours=1.0)
     async def image_loop(self):
         guild = self.guild
+        prefix = self.bot.command_prefix
 
         c = await self.connection.cursor()
         await c.execute("SELECT * FROM images")
@@ -133,16 +136,15 @@ class Image(commands.Cog):
                 async def send_image():
                     embed = discord.Embed()
                     embed.title = "Guess the name of the image"
-                    embed.set_footer(text=f'Image not showing? Do ?refresh | ID - {image[0]}')
+                    embed.set_footer(text=f'Image not showing? Do {prefix}refresh | ID - {image[0]}')
                     embed.set_image(url=image[1])
                     embed.colour = discord.Color.blue()
                     await channel.send(embed=embed)
                 await send_image()
 
-                # todo: Fix the prefix
                 def check(m):
                     return m.channel.id == channel.id and (m.content.lower() == image[2]
-                                                           or m.content.lower() == f'?refresh')
+                                                           or m.content.lower() == f'{prefix}refresh')
                 while True:
                     try:
                         msg = await self.bot.wait_for('message', check=check, timeout=120.0)
@@ -152,16 +154,17 @@ class Image(commands.Cog):
                                                                color=discord.Color.red()))
                         break
 
-                    if msg.content != f'?refresh':
+                    if msg.content != f'{prefix}refresh':
                         await c.execute("SELECT * FROM users WHERE user_id=?", (msg.author.id))
                         user = await c.fetchone()
+                        # making sure the user is in the database
                         if user:
                             await c.execute("UPDATE users SET points=? WHERE user_id=?", (user[1] + 1, msg.author.id))
                             points = user[1] + 1
                         else:
                             await c.execute("INSERT INTO users VALUES (?,?)", (msg.author.id, 1))
                             points = 1
-                        embed = discord.Embed(title=f'{msg.author.name} got the answer',
+                        embed = discord.Embed(title=f'{msg.author.display_name} got the answer',
                                               description=f'You received a point, you now have ``{points}`` '
                                                           f'points\n\n Answer was ``{image[2]}``',
                                               color=discord.Color.green())
@@ -191,7 +194,7 @@ class Image(commands.Cog):
         elif not channel_ignore and ignore:
             await c.execute("INSERT INTO ignore VALUES (?)", (channel.id))
 
-    @commands.guild_only()
+    @commands.check(Checks.manager_check)
     @commands.command(name='ignore')
     async def ignore_command(self, ctx, channel: discord.TextChannel, ignore=True):
         await self.ignore(channel, ignore)
@@ -207,7 +210,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.guild_only()
+    @commands.check(Checks.manager_check)
     @commands.command()
     async def ignore_all_but(self, ctx, channel: discord.TextChannel):
         for c in ctx.guild.channels:
@@ -221,7 +224,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.guild_only()
+    @commands.check(Checks.manager_check)
     @commands.command()
     async def ignore_clear(self, ctx):
         for c in ctx.guild.channels:
@@ -234,6 +237,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    @commands.check(Checks.manager_check)
     @commands.command()
     async def ignore_list(self, ctx):
         c = await self.connection.cursor()
@@ -249,7 +253,6 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f'Ignore list is empty',
                                                color=discord.Color.blue()))
 
-    # todo: add user commands (top users with the most points, what amount points you have, etc)
     @commands.guild_only()
     @commands.command()
     async def top(self, ctx):
@@ -261,12 +264,29 @@ class Image(commands.Cog):
         embed = discord.Embed(title="Top Users", color=discord.Color.blue())
         for k, x in enumerate(users):
             # 1 - ID, 2 - Points
-            # todo: add try statement to make sure the member is here
             member = ctx.guild.get_member(x[0])
-            embed.add_field(name=f'{k + 1}: ', value=f'{member.name} - ``{x[1]}``', inline=False)
+            if member:
+                name = member.display_name
+            else:
+                name = '``user has left the guild``'
+            embed.add_field(name=f'{k + 1}: ', value=f'{name} - ``{x[1]}``', inline=False)
 
         await ctx.send(embed=embed)
-        
+
+    @commands.guild_only()
+    @commands.command()
+    async def me(self, ctx):
+        c = await self.connection.cursor()
+        await c.execute("SELECT * FROM users WHERE user_id=?", (ctx.author.id))
+
+        member = await c.fetchone()
+        if not member:
+            await c.execute("INSERT INTO users VALUES (?, ?)", (ctx.author.id, 0))
+            member = [None, 0]  # first one isn't used, but we get 2 in a list from the database
+        embed = discord.Embed(color=discord.Color.blue(), description=f'Current score: {member[1]}')
+        embed.set_author(name=ctx.author.display_name, icon_url=str(ctx.author.avatar_url))
+        await ctx.send(embed=embed)
+
 
 def setup(bot):
     bot.add_cog(Image(bot))

@@ -21,6 +21,7 @@ if not env_file.is_file():
 load_dotenv()
 token = os.getenv('TOKEN')
 debug = os.getenv('DEBUG')
+debug_id = os.getenv('DEBUG_ID')
 data_folder = os.getenv('DATA')
 main_guild = os.getenv('GUILD')
 
@@ -30,6 +31,18 @@ if debug is None:
     raise EnvError('Missing DEBUG value!')
 if data_folder is None:
     raise EnvError('Missing DATA value!')
+if debug_id is None:
+    raise EnvError('Missing DEBUG_ID value!')
+else:
+    try:
+        temp_list = []
+        debug_id = debug_id.split(',')
+        for x in debug_id:
+            temp_list.append(int(x))
+        debug_id = temp_list
+    except ValueError:
+        raise EnvError('DEBUG_ID has to be a number!')
+
 if main_guild is None:
     raise EnvError('Missing GUILD value!')
 else:

@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from checks import Checks
 
 
 class Misc(commands.Cog):

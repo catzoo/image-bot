@@ -59,7 +59,7 @@ class Image(commands.Cog):
 
             self.connection = conn  # database connection
             self.guild = self.bot.get_guild(env_config.main_guild)
-            # self.image_loop.start()  # starting the loop
+            self.image_loop.start()  # starting the loop
 
     @commands.check(Checks.manager_check)
     @commands.command()
@@ -102,7 +102,7 @@ class Image(commands.Cog):
                                                color=discord.Color.red()))
 
     # noinspection PyCallingNonCallable
-    @tasks.loop(hours=1.0)
+    @tasks.loop(hours=24.0)
     async def image_loop(self):
         guild = self.guild
         prefix = self.bot.command_prefix

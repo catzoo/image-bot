@@ -101,6 +101,11 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f"I can't find that image",
                                                color=discord.Color.red()))
 
+    @commands.check(Checks.manager_check)
+    @commands.command()
+    async def send_image(self, ctx):
+        self.image_loop.restart()
+
     # noinspection PyCallingNonCallable
     @tasks.loop(hours=24.0)
     async def image_loop(self):

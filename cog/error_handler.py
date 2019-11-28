@@ -22,6 +22,13 @@ class BotErrors(commands.Cog):
         if isinstance(error, commands.NoPrivateMessage):
             message = f'{ctx.command.name} cannot be used in DMs'
 
+        elif isinstance(error, commands.CommandNotFound):
+            """
+            We don't want to send a message. 
+            Passing it so it doesn't reach else at the end
+            """
+            pass
+
         elif isinstance(error, commands.DisabledCommand):
             message = f'{ctx.command.name} has been disabled'
 

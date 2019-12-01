@@ -5,6 +5,8 @@ created on 11/9/2019
 import os
 import typing
 import asyncio
+from datetime import datetime
+from datetime import timedelta
 import discord
 from discord.ext import tasks, commands
 import env_config
@@ -24,6 +26,10 @@ class Image(commands.Cog):
         self.database_location = f'{env_config.data_folder}/image.db'
         self.ready = False  # used to only make on_ready event run once
         self.connection = None  # SQLite database
+
+        self.channel = None  # the text channel that the image is sent on
+        self.image = None  # SQLite image that we sent
+        self.image_sent = False  # if there is a image sent or not
 
     @staticmethod
     def url_check(url):
@@ -59,7 +65,7 @@ class Image(commands.Cog):
 
             self.connection = conn  # database connection
             self.guild = self.bot.get_guild(env_config.main_guild)
-            self.image_loop.start()  # starting the loop
+            self.image_before_loop.start()
 
     @commands.check(Checks.manager_check)
     @commands.command()
@@ -107,8 +113,31 @@ class Image(commands.Cog):
         self.image_loop.restart()
 
     # noinspection PyCallingNonCallable
-    @tasks.loop(hours=24.0)
+    @tasks.loop()
+    async def image_before_loop(self):
+        time = [18, 00]  # hour, minute
+        if self.image_sent:
+            self.image_loop.cancel()
+            image = self.image
+            channel = self.channel
+            await channel.send(embed=discord.Embed(title='Ran out of time!',
+                                                   description=f'The answer was ``{image[2]}``',
+                                                   color=discord.Color.red()))
+        # not going to change self.image_sent since its going to be started again
+        self.image_loop.start()
+        # setting it up to where its 24 hours repeating. Basically once per day at a certain time
+        now = datetime.utcnow()
+        later = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
+        later = later + timedelta(days=1)
+        later = later - now
+        # changing the time then loop it again
+        self.image_before_loop.change_interval(seconds=later.total_seconds())
+
+    # noinspection PyCallingNonCallable
+    @tasks.loop(count=1)
     async def image_loop(self):
+        self.image_sent = True  # start of the task
+
         guild = self.guild
         prefix = self.bot.command_prefix
 
@@ -137,6 +166,9 @@ class Image(commands.Cog):
                 channel = channel_list[randint(0, len(channel_list) - 1)]  # grabbing a random text channel
                 image = image_list[randint(0, len(image_list) - 1)]  # grabbing a random image
 
+                self.channel = channel
+                self.image = image
+
                 # id, url, name - image[0], image[1], image[2]
                 async def send_image():
                     embed = discord.Embed()
@@ -151,13 +183,7 @@ class Image(commands.Cog):
                     return m.channel.id == channel.id and (m.content.lower() == image[2]
                                                            or m.content.lower() == f'{prefix}refresh')
                 while True:
-                    try:
-                        msg = await self.bot.wait_for('message', check=check, timeout=120.0)
-                    except asyncio.TimeoutError:
-                        await channel.send(embed=discord.Embed(title='Ran out of time!',
-                                                               description=f'The answer was ``{image[2]}``',
-                                                               color=discord.Color.red()))
-                        break
+                    msg = await self.bot.wait_for('message', check=check)
 
                     if msg.content != f'{prefix}refresh':
                         await c.execute("SELECT * FROM users WHERE user_id=?", (msg.author.id))
@@ -181,6 +207,8 @@ class Image(commands.Cog):
                 print("Can't send image, no images to send!")
         else:
             print("All Text channels are ignored or there isn't any text channels to send to!")
+
+        self.image_sent = False
 
     @commands.command()
     async def refresh(self, ctx):

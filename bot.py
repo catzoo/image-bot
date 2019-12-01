@@ -10,7 +10,7 @@ import discord
 from discord.ext import commands
 import env_config
 
-bot = commands.Bot(command_prefix='?')
+bot = commands.Bot(command_prefix='pof?')
 started = datetime.now()
 
 # loading all the extensions

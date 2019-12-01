@@ -110,12 +110,12 @@ class Image(commands.Cog):
     @commands.check(Checks.manager_check)
     @commands.command()
     async def send_image(self, ctx):
-        self.image_loop.restart()
+        self.image_before_loop.restart()
 
     # noinspection PyCallingNonCallable
     @tasks.loop()
     async def image_before_loop(self):
-        time = [18, 00]  # hour, minute
+        time = [23, 30]  # hour, minute
         if self.image_sent:
             self.image_loop.cancel()
             image = self.image

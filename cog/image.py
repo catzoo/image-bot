@@ -65,7 +65,9 @@ class Image(commands.Cog):
 
             self.connection = conn  # database connection
             self.guild = self.bot.get_guild(env_config.main_guild)
-            self.image_before_loop.start()
+
+            if env_config.debug is False:
+                self.image_before_loop.start()
 
     @commands.check(Checks.manager_check)
     @commands.command()
@@ -115,7 +117,7 @@ class Image(commands.Cog):
     # noinspection PyCallingNonCallable
     @tasks.loop()
     async def image_before_loop(self):
-        time = [23, 30]  # hour, minute
+        time = [17, 30]  # hour, minute
         if self.image_sent:
             self.image_loop.cancel()
             image = self.image
@@ -126,7 +128,7 @@ class Image(commands.Cog):
         # not going to change self.image_sent since its going to be started again
         self.image_loop.start()
         # setting it up to where its 24 hours repeating. Basically once per day at a certain time
-        now = datetime.utcnow()
+        now = datetime.now()
         later = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
         later = later + timedelta(days=1)
         later = later - now

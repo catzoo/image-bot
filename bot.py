@@ -2,7 +2,7 @@
 created by catzoo
 created on: 11/9/2019
 """
-__version__ = '1.0'
+__version__ = '1.1.0'
 
 import os
 from datetime import datetime

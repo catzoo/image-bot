@@ -2,8 +2,7 @@
 Command Error Handler
 Created by: catzoo
 Doesn't include all of the discord exceptions / errors.
-But we don't really need all of the exceptions since we don't
-raise all of them.
+Any exceptions we missed will be DM to the developer
 """
 
 import discord
@@ -53,6 +52,7 @@ class BotErrors(commands.Cog):
 
         elif isinstance(error, commands.UserInputError):
             message = str(error)
+            await ctx.send_help(ctx.command)
 
         else:
             # if I missed an exception, or its something else we'll just print it out or send the debug users the errors
@@ -73,7 +73,7 @@ class BotErrors(commands.Cog):
 
         if message != '':
             message = message.replace('@', '@\u200b')
-            await ctx.send(embed = discord.Embed(description=message, color=discord.Color.red()))
+            await ctx.send(embed=discord.Embed(description=message, color=discord.Color.red()))
 
 
 def setup(bot):

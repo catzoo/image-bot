@@ -322,7 +322,11 @@ class Image(commands.Cog):
         channels = ''
         await c.execute("SELECT * FROM ignore")
         for row in await c.fetchall():
-            channels += f'- {ctx.guild.get_channel(row[0]).name}\n'
+            soda_can = ctx.guild.get_channel(row[0])
+            if soda_can:
+                channels += f'- {soda_can.name}\n'
+            else:
+                await c.execute("DELETE FROM ignore WHERE channel_id=?", (row[0]))
 
         if channels:
             await ctx.send(embed=discord.Embed(description=f'Ignored channels:\n{channels}',

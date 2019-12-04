@@ -4,15 +4,18 @@ created on 11/9/2019
 """
 import os
 import typing
-import asyncio
+
 from datetime import datetime
 from datetime import timedelta
+
 import discord
 from discord.ext import tasks, commands
+
 import env_config
 import asqlite
 from random import randint
 from checks import Checks
+import page
 
 __cog_name__ = 'image'
 
@@ -26,10 +29,12 @@ class Image(commands.Cog):
         self.database_location = f'{env_config.data_folder}/image.db'
         self.ready = False  # used to only make on_ready event run once
         self.connection = None  # SQLite database
+        self.guild = None  # the main guild. This is grabbed in on_ready() event
 
         self.channel = None  # the text channel that the image is sent on
         self.image = None  # SQLite image that we sent
         self.image_sent = False  # if there is a image sent or not
+        self.loop_started = False  # used to not send a message when the bot starts
 
     @staticmethod
     def url_check(url):
@@ -66,8 +71,7 @@ class Image(commands.Cog):
             self.connection = conn  # database connection
             self.guild = self.bot.get_guild(env_config.main_guild)
 
-            if env_config.debug is False:
-                self.image_before_loop.start()
+            self.image_before_loop.start()
 
     @commands.check(Checks.manager_check)
     @commands.command()
@@ -111,27 +115,66 @@ class Image(commands.Cog):
 
     @commands.check(Checks.manager_check)
     @commands.command()
+    async def list_image(self, ctx):
+        c = await self.connection.cursor()
+        await c.execute("SELECT * FROM images")
+        images = await c.fetchall()
+        pages = []
+        for image in images:
+            embed = discord.Embed(description=f'ID - {image[0]}, Name - {image[2]}', color=discord.Color.blue())
+            embed.set_image(url=image[1])
+            pages.append(embed)
+        paginator = page.Paginator(self.bot, ctx, pages)
+        await paginator.start()
+
+    @commands.check(Checks.manager_check)
+    @commands.command()
     async def send_image(self, ctx):
-        self.image_before_loop.restart()
+        self.image_before_loop.restart(forced=True)
 
     # noinspection PyCallingNonCallable
     @tasks.loop()
-    async def image_before_loop(self):
-        time = [17, 30]  # hour, minute
-        if self.image_sent:
-            self.image_loop.cancel()
+    async def image_before_loop(self, forced=False):
+        time = [17, 30]  # hour, minute (24 hours)
+
+        def get_time(days):
+            # setting it up to where its 24 hours repeating. Basically once per day at a certain time
+            now = datetime.now()
+            time_to = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
+            time_to = time_to + timedelta(days=days)
+            time_to = time_to - now
+            return time_to
+
+        if self.loop_started:
             image = self.image
-            channel = self.channel
-            await channel.send(embed=discord.Embed(title='Ran out of time!',
-                                                   description=f'The answer was ``{image[2]}``',
-                                                   color=discord.Color.red()))
-        # not going to change self.image_sent since its going to be started again
-        self.image_loop.start()
+            if self.image_sent:
+                self.image_loop.cancel()
+                channel = self.channel
+                await channel.send(embed=discord.Embed(title='Ran out of time!',
+                                                       description=f'The answer was ``{image[2]}``',
+                                                       color=discord.Color.red()))
+            # elif image:
+            #     c = await self.connection.cursor()
+            #     await c.execute("DELETE FROM images WHERE img_id=?", (image[0]))
+            #     print(f'deleting {image[0]}')
+
+            # not going to change self.image_sent since its going to be started again
+            if env_config.debug:
+                print('Sending image')
+            self.image_loop.start()
+
+        else:
+            self.loop_started = True
+            print('Starting image loop')
+
         # setting it up to where its 24 hours repeating. Basically once per day at a certain time
-        now = datetime.now()
-        later = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
-        later = later + timedelta(days=1)
-        later = later - now
+        later = get_time(days=0)
+        if later.days < 0 or forced:  # if the time passed or we forced an image to be sent
+            later = get_time(days=1)
+
+        if env_config.debug:
+            print(f'image_time - {later} - forced: {forced}')
+
         # changing the time then loop it again
         self.image_before_loop.change_interval(seconds=later.total_seconds())
 
@@ -202,6 +245,8 @@ class Image(commands.Cog):
                                                           f'points\n\n Answer was ``{image[2]}``',
                                               color=discord.Color.green())
                         await channel.send(embed=embed)
+                        await c.execute("DELETE FROM images WHERE img_id=?", (image[0]))
+                        print(f'deleting {image[0]}')
                         break
                     else:
                         await send_image()

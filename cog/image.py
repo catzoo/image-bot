@@ -138,7 +138,7 @@ class Image(commands.Cog):
         time = [17, 30]  # hour, minute (24 hours)
 
         def get_time(days):
-            # setting it up to where its 24 hours repeating. Basically once per day at a certain time
+            # gives back timedelta depending on the time
             now = datetime.now()
             time_to = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
             time_to = time_to + timedelta(days=days)
@@ -281,12 +281,10 @@ class Image(commands.Cog):
 
         if ignore:
             embed = discord.Embed(description=f'Added {channel} to the ignore list')
-            embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
-            embed.colour = discord.Color.green()
         else:
             embed = discord.Embed(description=f'Removed {channel} to the ignore list')
-            embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
-            embed.colour = discord.Color.green()
+        embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
+        embed.colour = discord.Color.green()
 
         await ctx.send(embed=embed)
 
@@ -342,14 +340,17 @@ class Image(commands.Cog):
         users = users[::-1]  # reversing the list for the for loop
 
         embed = discord.Embed(title="Top Users", color=discord.Color.blue())
+        string = ''
         for k, x in enumerate(users):
             # 1 - ID, 2 - Points
             member = ctx.guild.get_member(x[0])
             if member:
                 name = member.display_name
             else:
-                name = '``user has left the guild``'
-            embed.add_field(name=f'{k + 1}: ', value=f'{name} - ``{x[1]}``', inline=False)
+                name = f'``Member with ID {x[0]} not found``'
+            string += f'{k + 1}: | {name} - ``{x[1]}``\n'
+
+        embed.description = string
 
         await ctx.send(embed=embed)
 

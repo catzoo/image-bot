@@ -145,7 +145,9 @@ class Image(commands.Cog):
             time_to = time_to - now
             return time_to
 
-        if self.loop_started:
+        later = get_time(days=0)
+
+        if (self.loop_started and later.days < 0) or forced:
             image = self.image
             if self.image_sent:
                 self.image_loop.cancel()
@@ -153,23 +155,20 @@ class Image(commands.Cog):
                 await channel.send(embed=discord.Embed(title='Ran out of time!',
                                                        description=f'The answer was ``{image[2]}``',
                                                        color=discord.Color.red()))
-            # elif image:
-            #     c = await self.connection.cursor()
-            #     await c.execute("DELETE FROM images WHERE img_id=?", (image[0]))
-            #     print(f'deleting {image[0]}')
 
             # not going to change self.image_sent since its going to be started again
             if env_config.debug:
                 print('Sending image')
             self.image_loop.start()
 
-        else:
+        elif self.loop_started is False:
             self.loop_started = True
             print('Starting image loop')
 
         # setting it up to where its 24 hours repeating. Basically once per day at a certain time
         later = get_time(days=0)
-        if later.days < 0 or forced:  # if the time passed or we forced an image to be sent
+        if later.days < 0 or forced:
+            # if the time passed or we forced an image to be sent
             later = get_time(days=1)
 
         if env_config.debug:

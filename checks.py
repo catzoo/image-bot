@@ -15,7 +15,8 @@ class NoDatabase(Exception):
 # noinspection PyRedundantParentheses
 class Checks:
     """
-    This is used for discord.py checks
+    This is used for discord.py checks.
+    Mostly so we can easily add / remove roles from asqlite
     Use:
         - developer_check(ctx)
             - Only checks for guild owner / debug_id(s)
@@ -48,6 +49,10 @@ class Checks:
         self.connection = conn
 
         return self
+
+    async def close(self):
+        """Closes the SQLite connection"""
+        await self.connection.close()
 
     async def get_cursor(self):
         """Created this for use for most functions
@@ -124,22 +129,30 @@ class Checks:
         """Highest level check.
         Only checks for the developer or guild owner"""
         self = await Checks.create()
-        return await self._user_check(ctx)
+        check = await self._user_check(ctx)
+        await self.close()
+        return check
 
     @staticmethod
     async def manager_check(ctx):
         """Level 3 of role / user checking"""
         self = await Checks.create()
-        return await self._main_check(ctx, 3)
+        check = await self._main_check(ctx, 3)
+        await self.close()
+        return check
 
     @staticmethod
     async def moderator_check(ctx):
         """Level 2 of role / user checking"""
         self = await Checks.create()
-        return await self._main_check(ctx, 2)
+        check = await self._main_check(ctx, 2)
+        await self.close()
+        return check
 
     @staticmethod
     async def user_check(ctx):
         """Level 1 of role / user checking"""
         self = await Checks.create()
-        return await self._main_check(ctx, 1)
+        check = await self._main_check(ctx, 1)
+        await self.close()
+        return check

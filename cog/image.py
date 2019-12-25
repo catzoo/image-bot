@@ -334,6 +334,40 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f'Ignore list is empty',
                                                color=discord.Color.blue()))
 
+    async def get_member(self, id):
+        c = await self.connection.cursor()
+        await c.execute("SELECT * FROM users WHERE user_id=?", (id))
+
+        member_data = await c.fetchone()
+        if not member_data:
+            await c.execute("INSERT INTO users VALUES (?, ?)", (id, 0))
+            member_data = [id, 0]
+
+        return member_data
+
+    @commands.check(Checks.manager_check)
+    @commands.command()
+    async def user_edit(self, ctx, user: discord.Member, points):
+        c = await self.connection.cursor()
+        member_data = list(await self.get_member(user.id))
+
+        try:
+            if '+' in points:
+                points = points.replace('+', '')
+                member_data[1] += int(points)
+            elif '-' in points:
+                points = points.replace('-', '')
+                member_data[1] -= int(points)
+            else:
+                member_data[1] = int(points)
+        except ValueError:
+            raise commands.BadArgument('Points only supports a number and optional ``+`` or ``-``. '
+                                       'Examples: ``+2`` and ``3``')
+
+        await c.execute("UPDATE users SET points=? WHERE user_id=?", (member_data[1], user.id))
+        await ctx.send(embed=discord.Embed(color=discord.Color.green(),
+                                           description=f'Edited {user.display_name}\'s points to ``{member_data[1]}``'))
+
     @commands.guild_only()
     @commands.command()
     async def top(self, ctx):
@@ -342,7 +376,7 @@ class Image(commands.Cog):
         users = await c.fetchmany(10)
         users = users[::-1]  # reversing the list for the for loop
 
-        embed = discord.Embed(title="Top Users", color=discord.Color.blue())
+        embed = discord.Embed(title="Top 10 Users", color=discord.Color.blue())
         string = ''
         for k, x in enumerate(users):
             # 1 - ID, 2 - Points
@@ -360,13 +394,8 @@ class Image(commands.Cog):
     @commands.guild_only()
     @commands.command()
     async def me(self, ctx):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM users WHERE user_id=?", (ctx.author.id))
+        member = await self.get_member(ctx.author.id)
 
-        member = await c.fetchone()
-        if not member:
-            await c.execute("INSERT INTO users VALUES (?, ?)", (ctx.author.id, 0))
-            member = [None, 0]  # first one isn't used, but we get 2 in a list from the database
         embed = discord.Embed(color=discord.Color.blue(), description=f'Current score: {member[1]}')
         embed.set_author(name=ctx.author.display_name, icon_url=str(ctx.author.avatar_url))
         await ctx.send(embed=embed)

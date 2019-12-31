@@ -135,14 +135,24 @@ class Image(commands.Cog):
     # noinspection PyCallingNonCallable
     @tasks.loop()
     async def image_before_loop(self, forced=False):
-        time = [17, 30]  # hour, minute (24 hours)
+        # time = [17, 30]  # hour, minute (24 hours)
+        # time_every = [1, 30]
+        time = env_config.image_time
+        time_every = env_config.image_time_every
 
         def get_time(days):
             # gives back timedelta depending on the time
             now = datetime.now()
-            time_to = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
-            time_to = time_to + timedelta(days=days)
-            time_to = time_to - now
+            if time:
+                time_to = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
+                time_to = time_to + timedelta(days=days)
+                time_to = time_to - now
+            elif time_every:
+                time_to = timedelta(hours=time_every[0], minutes=time_every[1])
+            else:
+                time_to = timedelta(days=9999)
+                print('time or time_every cannot be None. Choose one')
+
             return time_to
 
         later = get_time(days=0)

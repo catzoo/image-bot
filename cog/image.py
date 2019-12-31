@@ -157,7 +157,7 @@ class Image(commands.Cog):
 
         later = get_time(days=0)
 
-        if (self.loop_started and later.days < 0) or forced:
+        if (self.loop_started and later.days < 0) or forced or (self.loop_started and time_every):
             image = self.image
             if self.image_sent:
                 self.image_loop.cancel()

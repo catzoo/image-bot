@@ -31,10 +31,11 @@ class Image(commands.Cog):
         self.connection = None  # SQLite database
         self.guild = None  # the main guild. This is grabbed in on_ready() event
 
+        # These are used for image_loops
         self.channel = None  # the text channel that the image is sent on
         self.image = None  # SQLite image that we sent
         self.image_sent = False  # if there is a image sent or not
-        self.loop_started = False  # used to not send a message when the bot starts
+        self.time = None  # used to keep track of the next time it will send
 
     @staticmethod
     def url_check(url):
@@ -135,57 +136,54 @@ class Image(commands.Cog):
     # noinspection PyCallingNonCallable
     @tasks.loop()
     async def image_before_loop(self, forced=False):
-        # time = [17, 30]  # hour, minute (24 hours)
-        # time_every = [1, 30]
-        time = env_config.image_time
         time_every = env_config.image_time_every
 
-        def get_time(days):
-            # gives back timedelta depending on the time
-            now = datetime.now()
-            if time:
-                time_to = datetime(now.year, now.month, now.day, hour=time[0], minute=time[1])
-                time_to = time_to + timedelta(days=days)
-                time_to = time_to - now
-            elif time_every:
-                time_to = timedelta(hours=time_every[0], minutes=time_every[1])
+        def get_date():
+            # returns a timedelta object
+            return self.time - datetime.now()
+
+        def add_time():
+            # This will add self.time depending on the mode (if time_every is None)
+            # It will only add the time if its in the past (if days == -1)
+            check = get_date()
+            if check.days < 0:
+                if time_every:
+                    self.time += timedelta(hours=time_every[0], minutes=time_every[1])
+                else:
+                    self.time += timedelta(days=1)
+                return True
             else:
-                time_to = timedelta(days=9999)
-                print('time or time_every cannot be None. Choose one')
+                return False
 
-            return time_to
+        if self.time is None:
+            # set self.time
+            now = datetime.now()
+            config_time = env_config.image_time
+            # there are two modes, we determine that if time_every is None or not
+            # config_time = [h, m, s]
+            if time_every:
+                config_time = [now.hour, config_time[0], config_time[1]]
+            else:
+                config_time = [config_time[0], config_time[1], 0]
 
-        later = get_time(days=0)
+            self.time = datetime(year=now.year, month=now.month, day=now.day,
+                                 hour=config_time[0], minute=config_time[1], second=config_time[2])
+            print(self.time)
+            # might be in the past, since the loop just started we don't want to instantly send an image
+            while add_time():
+                pass
 
-        if (self.loop_started and later.days < 0) or forced or (self.loop_started and time_every):
-            image = self.image
-            if self.image_sent:
-                self.image_loop.cancel()
-                channel = self.channel
-                await channel.send(embed=discord.Embed(title='Ran out of time!',
-                                                       description=f'The answer was ``{image[2]}``',
-                                                       color=discord.Color.red()))
+        # add code here to start / cancel the loop if its in the past
+        later = get_date()
+        if later.days < 0:
+            print('send image --', end=' ')
+        else:
+            print("don't send --", end=' ')
 
-            # not going to change self.image_sent since its going to be started again
-            if env_config.debug:
-                print('Sending image')
-            self.image_loop.start()
-
-        elif self.loop_started is False:
-            self.loop_started = True
-            print('Starting image loop')
-
-        # setting it up to where its 24 hours repeating. Basically once per day at a certain time
-        later = get_time(days=0)
-        if later.days < 0 or forced:
-            # if the time passed or we forced an image to be sent
-            later = get_time(days=1)
-
-        if env_config.debug:
-            print(f'image_time - {later} - forced: {forced}')
-
-        # changing the time then loop it again
-        self.image_before_loop.change_interval(seconds=later.total_seconds())
+        add_time()
+        later = get_date()
+        print(f'{later} -- {self.time} -- {type(time_every)}')
+        self.image_before_loop.change_interval(seconds=get_date().total_seconds())
 
     # noinspection PyCallingNonCallable
     @tasks.loop(count=1)

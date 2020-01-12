@@ -416,6 +416,25 @@ class Image(commands.Cog):
         embed.set_author(name=ctx.author.display_name, icon_url=str(ctx.author.avatar_url))
         await ctx.send(embed=embed)
 
+    @commands.command()
+    async def time(self, ctx):
+        """The next time the image will be sent at"""
+        time_format = ''
+        days = self.time.day - datetime.now().day
+
+        if days == 0:
+            time_format += 'Today at '
+        elif days == 1:
+            time_format += 'Tomorrow at '
+        elif days > 1:
+            time_format += '%b, %d, '
+        elif days < 0:
+            time_format += '[error] %b, %d, '
+        time_format += '%I:%M %p (CST)'
+
+        embed = discord.Embed(color=discord.Color.blue(), title='Next image will be sent at:')
+        embed.description = self.time.strftime(time_format)
+        await ctx.send(embed=embed)
 
 def setup(bot):
     bot.add_cog(Image(bot))

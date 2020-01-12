@@ -171,15 +171,21 @@ class Image(commands.Cog):
             print(self.time)
             # might be in the past, since the loop just started we don't want to instantly send an image
             while add_time():
+                # some configuration may still have it in the past, so adding a while loop
                 pass
 
-        # add code here to start / cancel the loop if its in the past
+        # starting image_loop if datetime is still in the past
         later = get_date()
         if later.days < 0:
-            print('send image --', end=' ')
-        else:
-            print("don't send --", end=' ')
+            if self.image_sent:
+                self.image_loop.cancel()
+                await self.channel.send(embed=discord.Embed(title='Ran out of time!',
+                                                            description=f'The answer was ``{self.image[2]}``',
+                                                            color=discord.Color.red()))
+            logging.info('Sending image')
+            self.image_loop.start()
 
+        # waiting until the next image send
         add_time()
         later = get_date()
         print(f'{later} -- {self.time} -- {type(time_every)}')

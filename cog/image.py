@@ -8,6 +8,8 @@ import typing
 from datetime import datetime
 from datetime import timedelta
 
+import logging
+
 import discord
 from discord.ext import tasks, commands
 
@@ -18,6 +20,7 @@ from checks import Checks
 import page
 
 __cog_name__ = 'image'
+logger = logging.getLogger(__name__)
 
 
 # noinspection PyRedundantParentheses
@@ -168,7 +171,7 @@ class Image(commands.Cog):
 
             self.time = datetime(year=now.year, month=now.month, day=now.day,
                                  hour=config_time[0], minute=config_time[1], second=config_time[2])
-            print(self.time)
+            logging.info(f'Setting the time to {self.time}')
             # might be in the past, since the loop just started we don't want to instantly send an image
             while add_time():
                 # some configuration may still have it in the past, so adding a while loop
@@ -187,8 +190,7 @@ class Image(commands.Cog):
 
         # waiting until the next image send
         add_time()
-        later = get_date()
-        print(f'{later} -- {self.time} -- {type(time_every)}')
+        logging.info(f'Sending next image at {self.time}')
         self.image_before_loop.change_interval(seconds=get_date().total_seconds())
 
     # noinspection PyCallingNonCallable

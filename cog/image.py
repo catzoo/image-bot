@@ -25,6 +25,48 @@ logger = logging.getLogger(__name__)
 
 # noinspection PyRedundantParentheses
 class Image(commands.Cog):
+    """
+    The way the group commands are named by:
+    GroupName_CommandName
+
+    Commands in this cog:
+    admin
+        image
+            add
+            remove
+            list
+            send
+        ignore
+            all_but
+            clear
+            list
+        user
+            edit
+    me
+    top
+    refresh
+    time
+
+    SQLite database setup:
+
+    image.db
+
+    images
+        img_id integer (primary key)
+        url text
+        name text
+        own integer (used as Boolean, 1 = true, 0 = false)
+    adoptions
+        adopt_id integer (primary key)
+        owner integer (foreign key, references users(user_id))
+        image integer (foreign key, references images(img_id))
+    users
+        user_id integer (primary key)
+        points integer
+    ignore
+        channel_id integer (technically primary key)
+
+    """
     def __init__(self, bot):
         self.bot = bot
         # location of the database, not going to make this go off of __cog_name__ since its a database
@@ -39,6 +81,35 @@ class Image(commands.Cog):
         self.image = None  # SQLite image that we sent
         self.image_sent = False  # if there is a image sent or not
         self.time = None  # used to keep track of the next time it will send
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        """Making sure the SQLite database is setup
+            Reason why this is in on_ready event is for async"""
+        # only run once
+        if not self.ready:
+            if not os.path.exists(self.database_location):
+                # database file is not made, so we will assume the database isn't setup
+                conn = await asqlite.connect(self.database_location)
+                c = await conn.cursor()
+                await c.execute("CREATE TABLE users (user_id integer NOT NULL PRIMARY KEY, points integer)")
+                await c.execute("CREATE TABLE images (img_id integer NOT NULL PRIMARY KEY, url text, name text, "
+                                "own integer)")
+
+                await c.execute("CREATE TABLE adoptions (adopt_id integer NOT NULL PRIMARY KEY, owner integer, "
+                                "image integer, FOREIGN KEY(owner) REFERENCES users(user_id), "
+                                "FOREIGN KEY(image) REFERENCES images(img_id))")
+
+                await c.execute("CREATE TABLE ignore (channel_id integer NOT NULL)")
+            else:
+                conn = await asqlite.connect(self.database_location)
+            self.ready = True
+
+            self.connection = conn  # database connection
+            self.guild = self.bot.get_guild(env_config.main_guild)
+
+            self.image_before_loop.start()
+
 
     @staticmethod
     def url_check(url):
@@ -55,31 +126,17 @@ class Image(commands.Cog):
         else:
             return False
 
-    @commands.Cog.listener()
-    async def on_ready(self):
-        """Making sure the SQLite database is setup
-            Reason why this is in on_ready event is for async"""
-        # only run once
-        if not self.ready:
-            if not os.path.exists(self.database_location):
-                # database file is not made, so we will assume the database isn't setup
-                conn = await asqlite.connect(self.database_location)
-                c = await conn.cursor()
-                await c.execute("CREATE TABLE users (user_id integer NOT NULL, points integer)")
-                await c.execute("CREATE TABLE images (img_id integer NOT NULL PRIMARY KEY, url text, name text)")
-                await c.execute("CREATE TABLE ignore (channel_id integer NOT NULL)")
-            else:
-                conn = await asqlite.connect(self.database_location)
-            self.ready = True
-
-            self.connection = conn  # database connection
-            self.guild = self.bot.get_guild(env_config.main_guild)
-
-            self.image_before_loop.start()
-
+    @commands.group()
     @commands.check(Checks.manager_check)
-    @commands.command()
-    async def add_image(self, ctx, name, url: typing.Optional[str]):
+    async def admin(self, ctx):
+        pass
+
+    @admin.group(name='image')
+    async def admin_image(self, ctx):
+        pass
+
+    @admin_image.command(name='add')
+    async def admin_add_image(self, ctx, name, url: typing.Optional[str]):
         if ctx.message.attachments:
             url = ctx.message.attachments[0].url
         if url:
@@ -87,7 +144,7 @@ class Image(commands.Cog):
                 # adding the image
                 name = name.lower()
                 c = await self.connection.cursor()
-                await c.execute("INSERT INTO images (url, name) VALUES (?, ?)", (url, name))
+                await c.execute("INSERT INTO images (url, name, own) VALUES (?, ?, ?)", (url, name, 0))
 
                 img_id = c.get_cursor().lastrowid  # getting the id
                 # sending the success message
@@ -103,9 +160,8 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description='URL or attachment is required',
                                                color=discord.Color.red()))
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
-    async def remove_image(self, ctx, img_id: int):
+    @admin_image.command(name='remove')
+    async def admin_remove_image(self, ctx, img_id: int):
         c = await self.connection.cursor()
         await c.execute("SELECT * FROM images WHERE img_id=?", (img_id))
         # make sure it exists
@@ -117,12 +173,13 @@ class Image(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f"I can't find that image",
                                                color=discord.Color.red()))
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
-    async def list_image(self, ctx):
+    @admin_image.command(name='list')
+    async def admin_list_image(self, ctx):
         c = await self.connection.cursor()
         await c.execute("SELECT * FROM images")
         images = await c.fetchall()
+        # TODO: maybe add this into a local function so list_image and user image list commands can use it?
+        # since paginator doesn't support images yet (I didn't design it that way)
         pages = []
         for image in images:
             embed = discord.Embed(description=f'ID - {image[0]}, Name - {image[2]}', color=discord.Color.blue())
@@ -131,14 +188,13 @@ class Image(commands.Cog):
         paginator = page.Paginator(self.bot, ctx, pages)
         await paginator.start()
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
-    async def send_image(self, ctx):
-        self.image_before_loop.restart(forced=True)
+    @admin_image.command(name='send')
+    async def admin_send_image(self, ctx):
+        await ctx.send('Still being worked on. Ey, <@109093669042151424> work on this command')
 
     # noinspection PyCallingNonCallable
     @tasks.loop()
-    async def image_before_loop(self, forced=False):
+    async def image_before_loop(self):
         time_every = env_config.image_time_every
 
         def get_date():
@@ -202,7 +258,7 @@ class Image(commands.Cog):
         prefix = self.bot.command_prefix
 
         c = await self.connection.cursor()
-        await c.execute("SELECT * FROM images")
+        await c.execute("SELECT * FROM images WHERE own=0")
 
         # grabbing the list of Images
         image_list = await c.fetchall()
@@ -260,8 +316,10 @@ class Image(commands.Cog):
                                                           f'points\n\n Answer was ``{image[2]}``',
                                               color=discord.Color.green())
                         await channel.send(embed=embed)
-                        await c.execute("DELETE FROM images WHERE img_id=?", (image[0]))
-                        print(f'deleting {image[0]}')
+                        # user_id = msg.author.id
+                        # img_id = image[0]
+                        await c.execute("INSERT INTO adoptions (owner, image) VALUES (?, ?)", (msg.author.id, image[0]))
+                        await c.execute("UPDATE images SET own=? WHERE img_id=?", (1, image[0]))
                         break
                     else:
                         await send_image()
@@ -289,9 +347,8 @@ class Image(commands.Cog):
         elif not channel_ignore and ignore:
             await c.execute("INSERT INTO ignore VALUES (?)", (channel.id))
 
-    @commands.check(Checks.manager_check)
-    @commands.command(name='ignore')
-    async def ignore_command(self, ctx, channel: discord.TextChannel, ignore=True):
+    @admin.group(name='ignore', invoke_without_command=True)
+    async def admin_ignore_command(self, ctx, channel: discord.TextChannel, ignore=True):
         await self.ignore(channel, ignore)
 
         if ignore:
@@ -303,8 +360,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
+    @admin_ignore_command.command(name='all_but')
     async def ignore_all_but(self, ctx, channel: discord.TextChannel):
         for c in ctx.guild.channels:
             if isinstance(c, discord.TextChannel):
@@ -317,8 +373,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
+    @admin_ignore_command.command(name='clear')
     async def ignore_clear(self, ctx):
         for c in ctx.guild.channels:
             if isinstance(c, discord.TextChannel):
@@ -330,8 +385,7 @@ class Image(commands.Cog):
 
         await ctx.send(embed=embed)
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
+    @admin_ignore_command.command(name='list')
     async def ignore_list(self, ctx):
         c = await self.connection.cursor()
         channels = ''
@@ -361,8 +415,11 @@ class Image(commands.Cog):
 
         return member_data
 
-    @commands.check(Checks.manager_check)
-    @commands.command()
+    @admin.group(name='user')
+    async def admin_user(self, ctx):
+        pass
+
+    @admin_user.command(name='edit')
     async def user_edit(self, ctx, user: discord.Member, points):
         c = await self.connection.cursor()
         member_data = list(await self.get_member(user.id))
@@ -410,6 +467,7 @@ class Image(commands.Cog):
     @commands.guild_only()
     @commands.command()
     async def me(self, ctx):
+        """Shows your current score"""
         member = await self.get_member(ctx.author.id)
 
         embed = discord.Embed(color=discord.Color.blue(), description=f'Current score: {member[1]}')
@@ -435,6 +493,13 @@ class Image(commands.Cog):
         embed = discord.Embed(color=discord.Color.blue(), title='Next image will be sent at:')
         embed.description = self.time.strftime(time_format)
         await ctx.send(embed=embed)
+
+    # TODO: add user commands named "image" (maybe) that will allow users to give, give back and view images
+    # TODO: [NOTE] there is a join command in SQLite, might come useful
+    # image list
+    # image give back
+    # image give to <user>
+
 
 def setup(bot):
     bot.add_cog(Image(bot))

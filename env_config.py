@@ -69,7 +69,7 @@ if image_time:
 
         image_time = list(temporary)
     except ValueError:
-        raise EnvError('TIME has to be numbers')
+        raise EnvError('TIME has to be an integer')
 
 if image_time_every:
     image_time_every = image_time_every.split(',')
@@ -80,7 +80,7 @@ if image_time_every:
 
         image_time_every = list(temporary)
     except ValueError:
-        raise EnvError('TIME_EVERY has to be numbers')
+        raise EnvError('TIME_EVERY has to be an integer')
 
 # make the directory if it doesn't exist
 if not Path(data_folder).is_dir():

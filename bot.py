@@ -8,11 +8,17 @@ import os
 from datetime import datetime
 import discord
 from discord.ext import commands
+import logging
 import env_config
 
 bot = commands.Bot(command_prefix='pof?')
 started = datetime.now()
 ready = False  # make sure the code in on_ready only run once
+
+# setting up logging
+logging.basicConfig(level=logging.INFO, filename='discord.log', filemode='w',
+                    format='%(asctime)s, %(levelname)s, %(filename)s, %(name)s | %(message)s',
+                    datefmt='%m-%d-%Y, %I:%M:%S %p')
 
 # loading all the extensions
 extension_list = os.listdir('cog')

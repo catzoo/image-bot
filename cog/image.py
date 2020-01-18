@@ -499,6 +499,50 @@ class Image(commands.Cog):
     # image list
     # image give back
     # image give to <user>
+    @commands.guild_only()
+    @commands.group(name='image')
+    async def image_command(self, ctx):
+        if ctx.invoked_subcommand is None:
+            raise commands.CommandNotFound()
+
+    @image_command.command(name='give')
+    async def image_command_give(self, ctx, image_id: int, to, *, user: typing.Optional[discord.Member]):
+        """Gives the selected image to someone
+        To use this command do either:
+
+            give 1 back
+            - this will give it back to the list for someone else to grab
+
+            give 1 to catzoo
+            - this will give the image to catzoo"""
+        # TODO: increase / decrease points [test]
+        c = await self.connection.cursor()
+        await c.execute("SELECT * FROM adoptions WHERE adopt_id=? AND owner=?", (image_id, ctx.author.id))
+        adoption = await c.fetchone()
+        if adoption:
+            to = to.lower()
+            if to == 'back':
+                await c.execute("UPDATE images SET own=? WHERE img_id=?", (0, adoption[2]))
+                await c.execute("DELETE FROM adoptions WHERE adopt_id=? AND owner=?", (image_id, ctx.author.id))
+                embed = discord.Embed(color=discord.Color.green(), description="Successfully given the image back")
+
+                await self.set_member_points(ctx.author.id, increase=-1)
+
+            elif to == 'to':
+                # making sure the member is there, if not create the member
+                await c.execute("UPDATE adoptions SET owner=? WHERE adopt_id=? AND owner=?",
+                                (user.id, image_id, ctx.author.id))
+                embed = discord.Embed(color=discord.Color.green(),
+                                      description=f"Successfully given the image to {user.display_name}")
+
+                await self.set_member_points(ctx.author.id, increase=-1)
+                await self.set_member_points(user.id, increase=1)
+            else:
+                raise commands.UserInputError("Sorry! I'm not sure what you're trying to do")
+        else:
+            embed = discord.Embed(color=discord.Color.red(),
+                                  description=f"I can't find the image with ID: {image_id}")
+        await ctx.send(embed=embed)
 
 
 def setup(bot):

@@ -17,8 +17,8 @@ ready = False  # make sure the code in on_ready only run once
 
 # setting up logging
 logging.basicConfig(level=logging.INFO, filename='discord.log', filemode='w',
-                    format='%(asctime)s, %(levelname)s, %(filename)s, %(name)s | %(message)s',
-                    datefmt='%m-%d-%Y, %I:%M:%S %p')
+                    format='%(asctime)s.%(msecs)d, %(levelname)s, %(filename)s, %(name)s | %(message)s',
+                    datefmt='%m-%d-%Y, %H:%M:%S')
 
 # loading all the extensions
 extension_list = os.listdir('cog')

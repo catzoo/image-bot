@@ -116,6 +116,34 @@ class Image(commands.Cog):
         await c.execute("UPDATE users SET points=? WHERE user_id=?", (points, user_id))
         return points
 
+    async def list_images(self, user_id=None):
+        # TODO: Test this
+        c = await self.connection.cursor()
+        fetch_string = "SELECT owner, adopt_id, i.name, i.url, image " \
+                       "FROM adoptions JOIN images i on adoptions.image = i.img_id"
+        if user_id:
+            fetch_string += " WHERE owner == ?"
+            await c.execute(fetch_string, (user_id))
+        else:
+            await c.execute(fetch_string)
+
+        images = await c.fetchall()
+        guild = self.guild
+
+        pages = []
+        for x in images:
+            owner = guild.get_member(x[0])
+            if owner is None:
+                owner = x[0]
+            embed = discord.Embed(color=discord.Color.blue(), description=f"Owner - {owner},\n"
+                                                                          f"Name - {x[2]}")
+            embed.set_image(url=x[3])
+            embed.set_footer(text=f"adopt_id - {x[1]} | image_id - {x[4]}")
+            pages.append(embed)
+
+        return pages
+
+
     @staticmethod
     def url_check(url):
         """Checks if the image url is supported
@@ -208,18 +236,21 @@ class Image(commands.Cog):
 
     @admin_image.command(name='list')
     async def admin_list_image(self, ctx):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM images")
-        images = await c.fetchall()
-        # TODO: maybe add this into a local function so list_image and user image list commands can use it?
-        # since paginator doesn't support images yet (I didn't design it that way)
-        pages = []
-        for image in images:
-            embed = discord.Embed(description=f'ID - {image[0]}, Name - {image[2]}', color=discord.Color.blue())
-            embed.set_image(url=image[1])
-            pages.append(embed)
+        pages = await self.list_images()
         paginator = page.Paginator(self.bot, ctx, pages)
         await paginator.start()
+        # c = await self.connection.cursor()
+        # await c.execute("SELECT * FROM images")
+        # images = await c.fetchall()
+        # # TODO: maybe add this into a local function so list_image and user image list commands can use it?
+        # # since paginator doesn't support images yet (I didn't design it that way)
+        # pages = []
+        # for image in images:
+        #     embed = discord.Embed(description=f'ID - {image[0]}, Name - {image[2]}', color=discord.Color.blue())
+        #     embed.set_image(url=image[1])
+        #     pages.append(embed)
+        # paginator = page.Paginator(self.bot, ctx, pages)
+        # await paginator.start()
 
     @admin_image.command(name='send')
     async def admin_send_image(self, ctx):

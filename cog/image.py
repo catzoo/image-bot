@@ -311,7 +311,11 @@ class Image(commands.Cog):
         # waiting until the next image send
         add_time()
         logging.info(f'Sending next image at {self.time}')
-        self.image_before_loop.change_interval(seconds=get_date().total_seconds())
+        try:
+            self.image_before_loop.change_interval(seconds=get_date().total_seconds())
+        except ValueError:
+            logging.info('Caught ValueError when changing the time. Restarting loop')
+            self.image_before_loop.restart()
 
     # noinspection PyCallingNonCallable
     @tasks.loop(count=1)

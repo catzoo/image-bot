@@ -9,6 +9,7 @@ import discord
 from discord.ext import commands
 import env_config
 import traceback
+import logging
 
 
 class BotErrors(commands.Cog):
@@ -67,9 +68,8 @@ class BotErrors(commands.Cog):
                     await user.send(f'[Error Handler] [{ctx.author} used {ctx.command.name}]:\
                     {error}\n```Error too large, check server logs```')
                     to_console = True
-
-            if to_console:
-                print(tb)
+            # logging it
+            logging.warning(tb)
 
         if message != '':
             message = message.replace('@', '@\u200b')

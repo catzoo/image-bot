@@ -370,15 +370,8 @@ class Image(commands.Cog):
                     msg = await self.bot.wait_for('message', check=check)
 
                     if msg.content != f'{prefix}refresh':
-                        await c.execute("SELECT * FROM users WHERE user_id=?", (msg.author.id))
-                        user = await c.fetchone()
                         # making sure the user is in the database
-                        if user:
-                            await c.execute("UPDATE users SET points=? WHERE user_id=?", (user[1] + 1, msg.author.id))
-                            points = user[1] + 1
-                        else:
-                            await c.execute("INSERT INTO users VALUES (?,?)", (msg.author.id, 1))
-                            points = 1
+                        points = await self.set_member_points(msg.author.id, increase=1)
                         embed = discord.Embed(title=f'{msg.author.display_name} got the answer',
                                               description=f'You received a point, you now have ``{points}`` '
                                                           f'points\n\n Answer was ``{image[2]}``',
@@ -478,25 +471,26 @@ class Image(commands.Cog):
 
     @admin_user.command(name='edit')
     async def user_edit(self, ctx, user: discord.Member, points):
-        c = await self.connection.cursor()
-        member_data = list(await self.get_member(user.id))
+        increase = None
+        set_to = None
 
         try:
             if '+' in points:
                 points = points.replace('+', '')
-                member_data[1] += int(points)
+                increase = int(points)
             elif '-' in points:
                 points = points.replace('-', '')
-                member_data[1] -= int(points)
+                increase = int(points) * -1
             else:
-                member_data[1] = int(points)
+                set_to = int(points)
+
         except ValueError:
             raise commands.BadArgument('Points only supports a number and optional ``+`` or ``-``. '
                                        'Examples: ``+2`` and ``3``')
 
-        await c.execute("UPDATE users SET points=? WHERE user_id=?", (member_data[1], user.id))
+        new_points = await self.set_member_points(user.id, increase=increase, set_to=set_to)
         await ctx.send(embed=discord.Embed(color=discord.Color.green(),
-                                           description=f'Edited {user.display_name}\'s points to ``{member_data[1]}``'))
+                                           description=f'Edited {user.display_name}\'s points to ``{new_points}``'))
 
     @commands.guild_only()
     @commands.command()

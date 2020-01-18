@@ -254,6 +254,7 @@ class Image(commands.Cog):
 
     @admin_image.command(name='send')
     async def admin_send_image(self, ctx):
+        # TODO: work on this commandD
         await ctx.send('Still being worked on. Ey, <@109093669042151424> work on this command')
 
     # noinspection PyCallingNonCallable

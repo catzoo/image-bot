@@ -82,6 +82,55 @@ class Image(commands.Cog):
         self.image_sent = False  # if there is a image sent or not
         self.time = None  # used to keep track of the next time it will send
 
+    async def get_member(self, user_id):
+        """Gets the member from the SQLite database
+        If member does not exist, it would create it with 0 points"""
+        c = await self.connection.cursor()
+        await c.execute("SELECT * FROM users WHERE user_id=?", (user_id))
+
+        member_data = await c.fetchone()
+        if not member_data:
+            await c.execute("INSERT INTO users VALUES (?, ?)", (user_id, 0))
+            member_data = [user_id, 0]
+        else:
+            member_data = list(member_data)
+
+        return member_data
+
+    # TODO: add set_member to set / increase points [test]
+    async def set_member_points(self, user_id, increase=None, set_to=None):
+        """Increases the member's points. Set this into a
+        function since multiple other commands / functions does it"""
+        c = await self.connection.cursor()
+
+        member_data = await self.get_member(user_id)
+        points = member_data[1]
+
+        if increase:
+            points += increase
+        elif set_to:
+            points = set_to
+        else:
+            raise ValueError("Both 'increase' and 'set_to' are None")
+
+        await c.execute("UPDATE users SET points=? WHERE user_id=?", (points, user_id))
+        return points
+
+    @staticmethod
+    def url_check(url):
+        """Checks if the image url is supported
+            going to expand this a bit more later"""
+        image_formats = [
+            "jpeg", "jpg", "jfif",
+            "tiff", "gif", "bmp",
+            "png", "pnm", "heif", "bpg",
+        ]
+        format_type = url.split('.')[-1]
+        if format_type in image_formats:
+            return True
+        else:
+            return False
+
     @commands.Cog.listener()
     async def on_ready(self):
         """Making sure the SQLite database is setup
@@ -109,22 +158,6 @@ class Image(commands.Cog):
             self.guild = self.bot.get_guild(env_config.main_guild)
 
             self.image_before_loop.start()
-
-
-    @staticmethod
-    def url_check(url):
-        """Checks if the image url is supported
-            going to expand this a bit more later"""
-        image_formats = [
-            "jpeg", "jpg", "jfif",
-            "tiff", "gif", "bmp",
-            "png", "pnm", "heif", "bpg",
-        ]
-        format_type = url.split('.')[-1]
-        if format_type in image_formats:
-            return True
-        else:
-            return False
 
     @commands.group()
     @commands.check(Checks.manager_check)
@@ -403,17 +436,6 @@ class Image(commands.Cog):
         else:
             await ctx.send(embed=discord.Embed(description=f'Ignore list is empty',
                                                color=discord.Color.blue()))
-
-    async def get_member(self, id):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM users WHERE user_id=?", (id))
-
-        member_data = await c.fetchone()
-        if not member_data:
-            await c.execute("INSERT INTO users VALUES (?, ?)", (id, 0))
-            member_data = [id, 0]
-
-        return member_data
 
     @admin.group(name='user')
     async def admin_user(self, ctx):

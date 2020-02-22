@@ -2,16 +2,23 @@
 created by catzoo
 created on: 11/9/2019
 """
-__version__ = '1.1.0'
+__version__ = '1.2.0'
 
 import os
 from datetime import datetime
 import discord
 from discord.ext import commands
+import logging
 import env_config
 
 bot = commands.Bot(command_prefix='pof?')
 started = datetime.now()
+ready = False  # make sure the code in on_ready only run once
+
+# setting up logging
+logging.basicConfig(level=logging.INFO, filename='discord.log', filemode='w',
+                    format='%(asctime)s.%(msecs)d, %(levelname)s, %(filename)s, %(name)s | %(message)s',
+                    datefmt='%m-%d-%Y, %H:%M:%S')
 
 # loading all the extensions
 extension_list = os.listdir('cog')
@@ -43,11 +50,10 @@ async def correct_guild_only(ctx):
 
 @bot.event
 async def on_ready():
-    # since the bot is ready, this means the bot has started
-    global started
-    started = datetime.now()
-
-    print(f'Logged in as {bot.user.name}\nVersion: {__version__}')
+    global ready
+    if not ready:
+        ready = True
+        print(f'Logged in as {bot.user.name}\nVersion: {__version__}')
 
 
 @bot.command()

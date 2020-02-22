@@ -24,6 +24,8 @@ debug = os.getenv('DEBUG')
 debug_id = os.getenv('DEBUG_ID')
 data_folder = os.getenv('DATA')
 main_guild = os.getenv('GUILD')
+image_time = os.getenv('TIME')
+image_time_every = os.getenv('TIME_EVERY')
 
 if token is None:
     raise EnvError('Missing TOKEN value!')
@@ -57,6 +59,28 @@ elif debug == 'True' or 'true':
     debug = True
 else:
     raise EnvError("DEBUG value has to be 'true' or 'false'")
+
+if image_time:
+    image_time = image_time.split(',')
+    temporary = []
+    try:
+        for x in image_time:
+            temporary.append(int(x))
+
+        image_time = list(temporary)
+    except ValueError:
+        raise EnvError('TIME has to be an integer')
+
+if image_time_every:
+    image_time_every = image_time_every.split(',')
+    temporary = []
+    try:
+        for x in image_time_every:
+            temporary.append(int(x))
+
+        image_time_every = list(temporary)
+    except ValueError:
+        raise EnvError('TIME_EVERY has to be an integer')
 
 # make the directory if it doesn't exist
 if not Path(data_folder).is_dir():

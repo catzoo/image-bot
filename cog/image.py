@@ -313,7 +313,13 @@ class Image(commands.Cog):
         add_time()
         logging.info(f'Sending next image at {self.time}')
         try:
-            self.image_before_loop.change_interval(seconds=get_date().total_seconds())
+            print(get_date().total_seconds())
+            # self.image_before_loop.change_interval(seconds=get_date().total_seconds())
+            seconds = get_date().total_seconds()
+            if seconds < 0:
+                raise ValueError
+            await asyncio.sleep(seconds)
+
         except ValueError:
             logging.info('Caught ValueError when changing the time. Restarting loop')
             self.image_before_loop.restart()

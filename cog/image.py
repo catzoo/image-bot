@@ -4,6 +4,7 @@ created on 11/9/2019
 """
 import os
 import typing
+import asyncio
 
 from datetime import datetime
 from datetime import timedelta
@@ -14,10 +15,10 @@ import discord
 from discord.ext import tasks, commands
 
 import env_config
-import asqlite
 from random import randint
 from checks import Checks
 import page
+import database
 
 __cog_name__ = 'image'
 logger = logging.getLogger(__name__)
@@ -72,8 +73,8 @@ class Image(commands.Cog):
         # location of the database, not going to make this go off of __cog_name__ since its a database
         # if we change the cog's name, it would change the database
         self.database_location = f'{env_config.data_folder}/image.db'
+        self.db = database.ImageDatabase(self.database_location)
         self.ready = False  # used to only make on_ready event run once
-        self.connection = None  # SQLite database
         self.guild = None  # the main guild. This is grabbed in on_ready() event
 
         # These are used for image_loops
@@ -81,68 +82,6 @@ class Image(commands.Cog):
         self.image = None  # SQLite image that we sent
         self.image_sent = False  # if there is a image sent or not
         self.time = None  # used to keep track of the next time it will send
-
-    async def get_member(self, user_id):
-        """Gets the member from the SQLite database
-        If member does not exist, it would create it with 0 points"""
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM users WHERE user_id=?", (user_id))
-
-        member_data = await c.fetchone()
-        if not member_data:
-            await c.execute("INSERT INTO users VALUES (?, ?)", (user_id, 0))
-            member_data = [user_id, 0]
-        else:
-            member_data = list(member_data)
-
-        return member_data
-
-    # TODO: add set_member to set / increase points [test]
-    async def set_member_points(self, user_id, increase=None, set_to=None):
-        """Increases the member's points. Set this into a
-        function since multiple other commands / functions does it"""
-        c = await self.connection.cursor()
-
-        member_data = await self.get_member(user_id)
-        points = member_data[1]
-
-        if increase:
-            points += increase
-        elif set_to:
-            points = set_to
-        else:
-            raise ValueError("Both 'increase' and 'set_to' are None")
-
-        await c.execute("UPDATE users SET points=? WHERE user_id=?", (points, user_id))
-        return points
-
-    async def list_images(self, user_id=None):
-        # TODO: Test this
-        c = await self.connection.cursor()
-        fetch_string = "SELECT owner, adopt_id, i.name, i.url, image " \
-                       "FROM adoptions JOIN images i on adoptions.image = i.img_id"
-        if user_id:
-            fetch_string += " WHERE owner == ?"
-            await c.execute(fetch_string, (user_id))
-        else:
-            await c.execute(fetch_string)
-
-        images = await c.fetchall()
-        guild = self.guild
-
-        pages = []
-        for x in images:
-            owner = guild.get_member(x[0])
-            if owner is None:
-                owner = x[0]
-            embed = discord.Embed(color=discord.Color.blue(), description=f"Owner - {owner},\n"
-                                                                          f"Name - {x[2]}")
-            embed.set_image(url=x[3])
-            embed.set_footer(text=f"adopt_id - {x[1]} | image_id - {x[4]}")
-            pages.append(embed)
-
-        return pages
-
 
     @staticmethod
     def url_check(url):
@@ -165,24 +104,10 @@ class Image(commands.Cog):
             Reason why this is in on_ready event is for async"""
         # only run once
         if not self.ready:
-            if not os.path.exists(self.database_location):
-                # database file is not made, so we will assume the database isn't setup
-                conn = await asqlite.connect(self.database_location)
-                c = await conn.cursor()
-                await c.execute("CREATE TABLE users (user_id integer NOT NULL PRIMARY KEY, points integer)")
-                await c.execute("CREATE TABLE images (img_id integer NOT NULL PRIMARY KEY, url text, name text, "
-                                "own integer)")
-
-                await c.execute("CREATE TABLE adoptions (adopt_id integer NOT NULL PRIMARY KEY, owner integer, "
-                                "image integer, FOREIGN KEY(owner) REFERENCES users(user_id), "
-                                "FOREIGN KEY(image) REFERENCES images(img_id))")
-
-                await c.execute("CREATE TABLE ignore (channel_id integer NOT NULL)")
-            else:
-                conn = await asqlite.connect(self.database_location)
-            self.ready = True
-
-            self.connection = conn  # database connection
+            # make sure the database exists and setup
+            await self.db.setup()
+            # this is in on_ready since we have to wait for the bot to cache everything
+            # basically make sure the bot has the guild before grabbing it
             self.guild = self.bot.get_guild(env_config.main_guild)
 
             self.image_before_loop.start()
@@ -204,10 +129,8 @@ class Image(commands.Cog):
             if self.url_check(url):
                 # adding the image
                 name = name.lower()
-                c = await self.connection.cursor()
-                await c.execute("INSERT INTO images (url, name, own) VALUES (?, ?, ?)", (url, name, 0))
+                img_id = await self.db.add_image(url, name)
 
-                img_id = c.get_cursor().lastrowid  # getting the id
                 # sending the success message
                 embed = discord.Embed()
                 embed.description = 'Image added successfully'
@@ -223,11 +146,8 @@ class Image(commands.Cog):
 
     @admin_image.command(name='remove')
     async def admin_remove_image(self, ctx, img_id: int):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM images WHERE img_id=?", (img_id))
         # make sure it exists
-        if await c.fetchone():
-            await c.execute("DELETE FROM images WHERE img_id=?", (img_id))
+        if await self.db.remove_image(img_id):
             await ctx.send(embed=discord.Embed(description=f"Successfully removed the image",
                                                color=discord.Color.green()))
         else:
@@ -236,25 +156,21 @@ class Image(commands.Cog):
 
     @admin_image.command(name='list')
     async def admin_list_image(self, ctx):
-        pages = await self.list_images()
+        images = await self.db.get_all_images()
+        pages = []
+        for image in images:
+            embed = discord.Embed(color=discord.Color.blue())
+            embed.title = image['name']
+            embed.description = f'Owned - {image["own"]}\nID - {image["img_id"]}'
+            embed.set_image(url=image['url'])
+            pages.append(embed)
+
         paginator = page.Paginator(self.bot, ctx, pages)
         await paginator.start()
-        # c = await self.connection.cursor()
-        # await c.execute("SELECT * FROM images")
-        # images = await c.fetchall()
-        # # TODO: maybe add this into a local function so list_image and user image list commands can use it?
-        # # since paginator doesn't support images yet (I didn't design it that way)
-        # pages = []
-        # for image in images:
-        #     embed = discord.Embed(description=f'ID - {image[0]}, Name - {image[2]}', color=discord.Color.blue())
-        #     embed.set_image(url=image[1])
-        #     pages.append(embed)
-        # paginator = page.Paginator(self.bot, ctx, pages)
-        # await paginator.start()
 
     @admin_image.command(name='send')
     async def admin_send_image(self, ctx):
-        # TODO: work on this commandD
+        # TODO: work on this command
         await ctx.send('Still being worked on. Ey, <@109093669042151424> work on this command')
 
     # noinspection PyCallingNonCallable
@@ -304,7 +220,7 @@ class Image(commands.Cog):
             if self.image_sent:
                 self.image_loop.cancel()
                 await self.channel.send(embed=discord.Embed(title='Ran out of time!',
-                                                            description=f'The answer was ``{self.image[2]}``',
+                                                            description=f'The answer was ``{self.image["name"]}``',
                                                             color=discord.Color.red()))
             logging.info('Sending image')
             self.image_loop.start()
@@ -332,17 +248,11 @@ class Image(commands.Cog):
         guild = self.guild
         prefix = self.bot.command_prefix
 
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM images WHERE own=0")
-
         # grabbing the list of Images
-        image_list = await c.fetchall()
+        image_list = await self.db.get_all_images(only_own=False)
 
         # getting the ignored channels
-        ignore_list = []
-        await c.execute("SELECT * FROM ignore")
-        for row in await c.fetchall():
-            ignore_list.append(row[0])
+        ignore_list = await self.db.get_all_ignore()
 
         # getting all the text channels without the ignored channels
         channel_list = []
@@ -360,34 +270,35 @@ class Image(commands.Cog):
                 self.channel = channel
                 self.image = image
 
-                # id, url, name - image[0], image[1], image[2]
                 async def send_image():
                     embed = discord.Embed()
                     embed.title = "Guess the name of the image"
-                    embed.set_footer(text=f'Image not showing? Do {prefix}refresh | ID - {image[0]}')
-                    embed.set_image(url=image[1])
+                    embed.set_footer(text=f'Image not showing? Do {prefix}refresh | ID - {image["img_id"]}')
+                    embed.set_image(url=image["url"])
                     embed.colour = discord.Color.blue()
                     await channel.send(embed=embed)
+
                 await send_image()
 
                 def check(m):
-                    return m.channel.id == channel.id and (m.content.lower() == image[2]
+                    return m.channel.id == channel.id and (m.content.lower() == image["name"]
                                                            or m.content.lower() == f'{prefix}refresh')
                 while True:
                     msg = await self.bot.wait_for('message', check=check)
 
                     if msg.content != f'{prefix}refresh':
-                        # making sure the user is in the database
-                        points = await self.set_member_points(msg.author.id, increase=1)
+                        # adding the member's points
+                        points = await self.db.add_member_points(msg.author.id, 1)
+                        # inserting the adoption
+                        await self.db.add_adoption(image['img_id'], msg.author.id)
+                        # changing the image own to one
+                        await self.db.edit_image(image['img_id'], own=1)
+
                         embed = discord.Embed(title=f'{msg.author.display_name} got the answer',
                                               description=f'You received a point, you now have ``{points}`` '
-                                                          f'points\n\n Answer was ``{image[2]}``',
+                                                          f'points\n\n Answer was ``{image["name"]}``',
                                               color=discord.Color.green())
                         await channel.send(embed=embed)
-                        # user_id = msg.author.id
-                        # img_id = image[0]
-                        await c.execute("INSERT INTO adoptions (owner, image) VALUES (?, ?)", (msg.author.id, image[0]))
-                        await c.execute("UPDATE images SET own=? WHERE img_id=?", (1, image[0]))
                         break
                     else:
                         await send_image()
@@ -406,14 +317,12 @@ class Image(commands.Cog):
         pass
 
     async def ignore(self, channel, ignore):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM ignore WHERE channel_id=?", (channel.id))
-        channel_ignore = await c.fetchone()
+        channel_ignore = await self.db.get_ignore(channel.id)
 
-        if channel_ignore and not ignore:
-            await c.execute("DELETE FROM ignore WHERE channel_id=?", (channel.id))
-        elif not channel_ignore and ignore:
-            await c.execute("INSERT INTO ignore VALUES (?)", (channel.id))
+        if channel_ignore and not ignore:  # if ignore is False
+            await self.db.remove_ignore(channel.id)
+        elif not channel_ignore and ignore:  # if ignore is True
+            await self.db.add_ignore(channel.id)
 
     @admin.group(name='ignore', invoke_without_command=True)
     async def admin_ignore_command(self, ctx, channel: discord.TextChannel, ignore=True):
@@ -423,7 +332,7 @@ class Image(commands.Cog):
             embed = discord.Embed(description=f'Added {channel} to the ignore list')
         else:
             embed = discord.Embed(description=f'Removed {channel} to the ignore list')
-        embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
+        embed.set_footer(text=f'Use {ctx.prefix}admin ignore list to see the list')
         embed.colour = discord.Color.green()
 
         await ctx.send(embed=embed)
@@ -436,7 +345,7 @@ class Image(commands.Cog):
         await self.ignore(channel, False)
 
         embed = discord.Embed(description=f'Ignoring everything but {channel}')
-        embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
+        embed.set_footer(text=f'Use {ctx.prefix}admin ignore list to see the list')
         embed.colour = discord.Color.green()
 
         await ctx.send(embed=embed)
@@ -448,22 +357,20 @@ class Image(commands.Cog):
                 await self.ignore(c, False)
 
         embed = discord.Embed(description=f'Cleared the ignore list')
-        embed.set_footer(text=f'Use {ctx.prefix}ignore_list to see the list')
+        embed.set_footer(text=f'Use {ctx.prefix}admin ignore list to see the list')
         embed.colour = discord.Color.green()
 
         await ctx.send(embed=embed)
 
     @admin_ignore_command.command(name='list')
     async def ignore_list(self, ctx):
-        c = await self.connection.cursor()
         channels = ''
-        await c.execute("SELECT * FROM ignore")
-        for row in await c.fetchall():
-            soda_can = ctx.guild.get_channel(row[0])
+        for chan_id in await self.db.get_all_ignore():
+            soda_can = ctx.guild.get_channel(chan_id)
             if soda_can:
                 channels += f'- {soda_can.name}\n'
             else:
-                await c.execute("DELETE FROM ignore WHERE channel_id=?", (row[0]))
+                await self.db.remove_ignore(chan_id)
 
         if channels:
             await ctx.send(embed=discord.Embed(description=f'Ignored channels:\n{channels}',
@@ -478,45 +385,41 @@ class Image(commands.Cog):
 
     @admin_user.command(name='edit')
     async def user_edit(self, ctx, user: discord.Member, points):
-        increase = None
-        set_to = None
-
         try:
             if '+' in points:
                 points = points.replace('+', '')
-                increase = int(points)
+                points = int(points)
+                new_points = await self.db.add_member_points(user.id, points)
+
             elif '-' in points:
                 points = points.replace('-', '')
-                increase = int(points) * -1
+                points = int(points) * -1
+                new_points = await self.db.add_member_points(user.id, points)
             else:
-                set_to = int(points)
+                new_points = int(points)
+                await self.db.edit_member(user.id, new_points)
 
         except ValueError:
             raise commands.BadArgument('Points only supports a number and optional ``+`` or ``-``. '
                                        'Examples: ``+2`` and ``3``')
 
-        new_points = await self.set_member_points(user.id, increase=increase, set_to=set_to)
         await ctx.send(embed=discord.Embed(color=discord.Color.green(),
                                            description=f'Edited {user.display_name}\'s points to ``{new_points}``'))
 
     @commands.guild_only()
     @commands.command()
     async def top(self, ctx):
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM users ORDER BY points")
-        users = await c.fetchmany(10)
-        users = users[::-1]  # reversing the list for the for loop
-
+        users = await self.db.get_all_members('DESC')
         embed = discord.Embed(title="Top 10 Users", color=discord.Color.blue())
         string = ''
         for k, x in enumerate(users):
             # 1 - ID, 2 - Points
-            member = ctx.guild.get_member(x[0])
+            member = ctx.guild.get_member(x['user_id'])
             if member:
                 name = member.display_name
             else:
-                name = f'``Member with ID {x[0]} not found``'
-            string += f'{k + 1}: | {name} - ``{x[1]}``\n'
+                name = f'``Member with ID {x["user_id"]} not found``'
+            string += f'{k + 1}: | {name} - ``{x["points"]}``\n'
 
         embed.description = string
 
@@ -526,9 +429,9 @@ class Image(commands.Cog):
     @commands.command()
     async def me(self, ctx):
         """Shows your current score"""
-        member = await self.get_member(ctx.author.id)
+        member = await self.db.get_member(ctx.author.id)
 
-        embed = discord.Embed(color=discord.Color.blue(), description=f'Current score: {member[1]}')
+        embed = discord.Embed(color=discord.Color.blue(), description=f'Current score: {member["points"]}')
         embed.set_author(name=ctx.author.display_name, icon_url=str(ctx.author.avatar_url))
         await ctx.send(embed=embed)
 
@@ -553,7 +456,6 @@ class Image(commands.Cog):
         await ctx.send(embed=embed)
 
     # TODO: add user commands named "image" (maybe) that will allow users to give, give back and view images
-    # TODO: [NOTE] there is a join command in SQLite, might come useful
     # image list
     # image give back
     # image give to <user>
@@ -573,28 +475,27 @@ class Image(commands.Cog):
 
             give 1 to catzoo
             - this will give the image to catzoo"""
-        # TODO: increase / decrease points [test]
-        c = await self.connection.cursor()
-        await c.execute("SELECT * FROM adoptions WHERE adopt_id=? AND owner=?", (image_id, ctx.author.id))
-        adoption = await c.fetchone()
+        adoption = await self.db.get_adoptions(image_id, ctx.author.id)
+        adoption = adoption[0]  # should only return one, and its in a list
         if adoption:
+            # TODO: insert "are you sure" here with reactions
             to = to.lower()
             if to == 'back':
-                await c.execute("UPDATE images SET own=? WHERE img_id=?", (0, adoption[2]))
-                await c.execute("DELETE FROM adoptions WHERE adopt_id=? AND owner=?", (image_id, ctx.author.id))
+                await self.db.edit_image(image_id, own=0)
+                await self.db.remove_adoption(adoption["adopt_id"])
                 embed = discord.Embed(color=discord.Color.green(), description="Successfully given the image back")
 
-                await self.set_member_points(ctx.author.id, increase=-1)
+                await self.db.add_member_points(ctx.author.id, -1)
 
             elif to == 'to':
                 # making sure the member is there, if not create the member
-                await c.execute("UPDATE adoptions SET owner=? WHERE adopt_id=? AND owner=?",
-                                (user.id, image_id, ctx.author.id))
+                await self.db.get_member(user.id)
+                await self.db.edit_adoption(adoption['adopt_id'], user.id)
                 embed = discord.Embed(color=discord.Color.green(),
                                       description=f"Successfully given the image to {user.display_name}")
 
-                await self.set_member_points(ctx.author.id, increase=-1)
-                await self.set_member_points(user.id, increase=1)
+                await self.db.add_member_points(ctx.author.id, -1)
+                await self.db.add_member_points(user.id, 1)
             else:
                 raise commands.UserInputError("Sorry! I'm not sure what you're trying to do")
         else:

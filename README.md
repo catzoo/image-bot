@@ -16,8 +16,7 @@ TIME_EVERY=<time_every>
 These two modes will look at TIME and TIME_EVERY differently.
 
 ### Mode 1
--   This is for a specific time of the day. For example, in this mode you can have it only send it at
-    5:30 pm per day
+-   This is for sending it constantly. For example, in this mode you can have it start sending an image every hour rather than per day.
 -   To set this mode do:
     - ``TIME=Minute,Second``
     - ``TIME_EVERY=Hour,Minute``
@@ -28,7 +27,8 @@ These two modes will look at TIME and TIME_EVERY differently.
     ```
 
 ### Mode 2 
--   This is for sending it constantly. For example, in this mode you can have it start sending an image every hour rather than per day.
+-   This is for a specific time of the day. For example, in this mode you can have it only send it at
+    5:30 pm per day
 -   To set this mode do:
     - ``TIME=Hour,Minute`` - note it will be in 24 hours
     - ``Do not put in a TIME_EVERY``
